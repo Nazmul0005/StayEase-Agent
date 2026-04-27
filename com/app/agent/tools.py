@@ -12,9 +12,9 @@ from com.app.database.db_connection.db_connection import SessionLocal
 
 class SearchPropertiesInput(BaseModel):
     location: str = Field(description="City or area name, e.g. 'Cox's Bazar'")
-    check_in: str = Field(description="Check-in date in YYYY-MM-DD format")
-    check_out: str = Field(description="Check-out date in YYYY-MM-DD format")
-    guests: int = Field(description="Number of guests", ge=1, le=20)
+    check_in: Optional[str] = Field(default=None, description="Check-in date in YYYY-MM-DD format")
+    check_out: Optional[str] = Field(default=None, description="Check-out date in YYYY-MM-DD format")
+    guests: Optional[int] = Field(default=1, description="Number of guests", ge=1, le=20)
 
 
 class GetListingDetailsInput(BaseModel):
@@ -35,9 +35,9 @@ class CreateBookingInput(BaseModel):
 @tool("search_available_properties", args_schema=SearchPropertiesInput)
 def search_available_properties(
     location: str,
-    check_in: str,
-    check_out: str,
-    guests: int,
+    check_in: Optional[str] = None,
+    check_out: Optional[str] = None,
+    guests: int = 1,
 ) -> dict:
     """
     Search for available listings in a given location for specified dates and guest count.
@@ -46,10 +46,13 @@ def search_available_properties(
     """
     db: Session = SessionLocal()
     try:
+        # Replace spaces with % to flexibly match "cox bazar" to "Cox's Bazar"
+        flexible_location = location.replace(" ", "%")
+        
         results = (
             db.query(Listing)
             .filter(
-                Listing.location.ilike(f"%{location}%"),
+                Listing.location.ilike(f"%{flexible_location}%"),
                 Listing.max_guests >= guests,
                 Listing.is_available == True,
             )
@@ -88,7 +91,12 @@ def get_listing_details(listing_id: str) -> dict:
     """
     db: Session = SessionLocal()
     try:
-        listing = db.query(Listing).filter(Listing.id == listing_id).first()
+        import uuid
+        try:
+            val = uuid.UUID(listing_id)
+            listing = db.query(Listing).filter(Listing.id == val).first()
+        except ValueError:
+            listing = db.query(Listing).filter(Listing.name.ilike(f"%{listing_id}%")).first()
 
         if not listing:
             return {"status": "error", "message": "Listing not found"}
@@ -131,7 +139,12 @@ def create_booking(
     """
     db: Session = SessionLocal()
     try:
-        listing = db.query(Listing).filter(Listing.id == listing_id).first()
+        import uuid
+        try:
+            val = uuid.UUID(listing_id)
+            listing = db.query(Listing).filter(Listing.id == val).first()
+        except ValueError:
+            listing = db.query(Listing).filter(Listing.name.ilike(f"%{listing_id}%")).first()
 
         if not listing:
             return {"status": "error", "message": "Listing not found"}

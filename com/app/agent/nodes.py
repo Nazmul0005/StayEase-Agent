@@ -79,9 +79,12 @@ def classify_intent(state: AgentState) -> AgentState:
             "booking_params": None,
         }
 
-    classification_prompt = f"""Analyze this user message and respond ONLY with a JSON object.
+    classification_prompt = f"""Analyze the user's latest message and respond ONLY with a JSON object.
 
-User message: "{latest_message}"
+Conversation history (most recent last):
+{chr(10).join(f"{m['role'].upper()}: {m['content']}" for m in messages[-6:])}
+
+Latest user message: "{latest_message}"
 
 Respond with exactly this JSON structure:
 {{
@@ -105,6 +108,7 @@ Rules:
 - intent = "book" if confirming a booking
 - intent = "greeting" if the guest is just saying hello, hi, hey, or asking what you can do
 - intent = "escalate" for anything else
+- For "book" intent: extract listing_id, guest_name, check_in, check_out, guests from the conversation history above if not in the latest message
 - Fill only the fields relevant to the intent, null for others"""
 
     response = llm.invoke([
@@ -149,28 +153,61 @@ def run_tool(state: AgentState) -> AgentState:
 
     if intent == "search":
         params = state.get("search_params") or {}
-        result = search_available_properties.invoke({
-            "location": params.get("location", ""),
-            "check_in": params.get("check_in", ""),
-            "check_out": params.get("check_out", ""),
-            "guests": params.get("guests", 1),
-        })
+        # Strip None values so Optional tool defaults are used
+        search_args = {"location": params.get("location") or ""}
+        if params.get("check_in"):
+            search_args["check_in"] = params["check_in"]
+        if params.get("check_out"):
+            search_args["check_out"] = params["check_out"]
+        if params.get("guests"):
+            search_args["guests"] = params["guests"]
+        result = search_available_properties.invoke(search_args)
 
     elif intent == "details":
-        listing_id = state.get("selected_listing_id", "")
-        result = get_listing_details.invoke({"listing_id": listing_id})
+        listing_id = state.get("selected_listing_id")
+        if not listing_id:
+            result = {
+                "status": "missing_info",
+                "message": "Which property would you like more details about? (Please provide the name or ID)"
+            }
+        else:
+            result = get_listing_details.invoke({"listing_id": listing_id})
 
     elif intent == "book":
         params = state.get("search_params") or {}
         booking = state.get("booking_params") or {}
-        result = create_booking.invoke({
-            "listing_id": state.get("selected_listing_id", ""),
-            "guest_name": booking.get("guest_name", "Guest"),
-            "guest_phone": booking.get("guest_phone"),
-            "check_in": params.get("check_in", ""),
-            "check_out": params.get("check_out", ""),
-            "guests": params.get("guests", 1),
-        })
+        listing_id = state.get("selected_listing_id")
+        guest_name = booking.get("guest_name")
+        check_in = params.get("check_in")
+        check_out = params.get("check_out")
+        guests = params.get("guests") or 1
+
+        # Identify which required fields are missing
+        missing = []
+        if not listing_id:
+            missing.append("property ID (please specify which property you'd like to book)")
+        if not guest_name:
+            missing.append("your full name")
+        if not check_in:
+            missing.append("check-in date (YYYY-MM-DD)")
+        if not check_out:
+            missing.append("check-out date (YYYY-MM-DD)")
+
+        if missing:
+            result = {
+                "status": "missing_info",
+                "message": "To complete your booking, I still need the following information:",
+                "missing_fields": missing,
+            }
+        else:
+            result = create_booking.invoke({
+                "listing_id": listing_id,
+                "guest_name": guest_name,
+                "guest_phone": booking.get("guest_phone"),
+                "check_in": check_in,
+                "check_out": check_out,
+                "guests": guests,
+            })
 
     return {**state, "tool_result": result}
 
