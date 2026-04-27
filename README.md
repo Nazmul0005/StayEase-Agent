@@ -78,13 +78,13 @@ classify_intent → (conditional) → run_tool → generate_response → END
                                ↘ escalate → END
 ```
 
-| Node                  | What it does                                                      | Updates state                                                           | Next node                                |
-| --------------------- | ----------------------------------------------------------------- | ----------------------------------------------------------------------- | ---------------------------------------- |
+| Node                  | What it does                                                        | Updates state                                                           | Next node                                  |
+| --------------------- | ------------------------------------------------------------------- | ----------------------------------------------------------------------- | ------------------------------------------ |
 | `classify_intent`   | Detects greetings (fast path) or sends to LLM for intent extraction | `intent`,`search_params`,`selected_listing_id`,`booking_params` | `run_tool`,`greeting`, or `escalate` |
-| `run_tool`          | Calls the correct tool based on intent and state params           | `tool_result`                                                         | `generate_response`                    |
-| `generate_response` | Sends tool result to LLM to produce a natural guest-facing reply  | `messages`(appends assistant reply)                                   | `END`                                  |
-| `greeting`          | Responds with a friendly welcome message and guidance             | `messages`(appends welcome reply)                                     | `END`                                  |
-| `escalate`          | Produces a polite handoff message when request is out of scope    | `messages`,`should_escalate = True`                                 | `END`                                  |
+| `run_tool`          | Calls the correct tool based on intent and state params             | `tool_result`                                                         | `generate_response`                      |
+| `generate_response` | Sends tool result to LLM to produce a natural guest-facing reply    | `messages`(appends assistant reply)                                   | `END`                                    |
+| `greeting`          | Responds with a friendly welcome message and guidance               | `messages`(appends welcome reply)                                     | `END`                                    |
+| `escalate`          | Produces a polite handoff message when request is out of scope      | `messages`,`should_escalate = True`                                 | `END`                                    |
 
 ---
 
@@ -175,6 +175,7 @@ classify_intent → (conditional) → run_tool → generate_response → END
 ## Setup & Running
 
 ```bash
+
 # 1. Clone and install
 pip install -r requirements.txt
 
@@ -186,7 +187,76 @@ cp .env.example .env
 docker compose up --build
 
 # 4. Or run locally (with PostgreSQL running)
-python -m com.app.main
+python -m com.app.main or python -m uvicorn com.app.main:app --reload --port 8000
 ```
 
 API docs available at: `http://localhost:8000/docs`
+
+---
+
+## Full Conversation Trace (Booking + Escalation)
+
+This example demonstrates a complete multi-turn conversation where the agent handles a greeting, searches for properties, provides details, collects missing information for a booking, and finally escalates an out-of-scope payment request.
+
+**Guest:** Hi
+**Agent:** Hello! Welcome to StayEase 👋
+I'm your AI booking assistant. Here's what I can help you with:
+🔍 **Search** — Find available properties by location, dates, and number of guests
+🏠 **Details** — Get full information about a specific property
+📅 **Book** — Create a confirmed booking for your stay
+To get started, just tell me where you'd like to stay and your travel dates!
+
+**Guest:** I want to know available hotel in cox bazar**Agent:** We've found some great options for you in Cox's Bazar. Here are 4 available properties:
+
+1. **Sea Pearl Beach Resort**: BDT 4,500 per night (up to 4 guests)
+2. **Ocean Paradise Hotel**: BDT 3,200 per night (up to 3 guests)
+3. **Coral Reef Guest House**: BDT 1,800 per night (up to 2 guests)
+4. **Blue Horizon Villa**: BDT 6,800 per night (up to 6 guests)
+   Which one of these properties interests you?
+
+**Guest:** I prefer this one: Coral Reef Guest House
+**Agent:** You've chosen the **Coral Reef Guest House**. Here are the details:
+📍 Location: Sugandha Beach, Cox's Bazar
+💰 Price: BDT 1,800 per night
+👥 Max Guests: 2
+✨ Amenities: WiFi, Fan, Shared Bathroom, Rooftop Access
+Would you like to book this guest house or need more information?
+
+**Guest:** Yes. I am ok with that**Agent:** You're almost all set to book the Coral Reef Guest House for BDT 1,800 per night. To complete your booking, could you please provide me with the following details:
+
+- Your full name
+- Check-in date (YYYY-MM-DD)
+- Check-out date (YYYY-MM-DD)
+
+**Guest:** I will check in 26.05.26 and check out 28.05.26
+**Agent:** You're all set to book the Coral Reef Guest House from 2026-05-26 to 2026-05-28. To complete your booking, I just need one more thing: **your full name**. Once I have that, I'll be happy to confirm your booking and provide you with a booking ID and the total price (BDT 3,600).
+
+**Guest:** Register my name as Nazmul Islam
+**Agent:** Hi Nazmul Islam, I'm happy to confirm that your booking at **Coral Reef Guest House** is complete.
+📅 Stay: 2026-04-26 to 2026-04-28
+🔖 Booking ID: 237ca973-1270-4578-9bab-99c37e290965
+💰 Total Price: BDT 3,600
+We're looking forward to welcoming you!
+
+**Guest:** So I want to payment now
+**Agent:** I'm sorry, I can only help with searching for properties, getting listing details, and making bookings. For anything else, **I'm connecting you with a human agent** who will assist you shortly. Thank you for your patience!
+
+---
+
+## API & Agent Visuals
+
+### 1. API Endpoints Overview
+
+![API Endpoints](com/app/assets/endpoints.png)
+
+### 2. Available Property Listings
+
+![Property Listings](com/app/assets/listing.png)
+
+### 3. Booking Confirmation
+
+![Booking Confirmation](com/app/assets/booking.png)
+
+### 4. Conversation History Trace
+
+![Conversation History](com/app/assets/conversation_history.png)
