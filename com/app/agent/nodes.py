@@ -44,15 +44,40 @@ Always respond in the same language the guest uses (Bengali or English)."""
 
 # ─── Nodes ────────────────────────────────────────────────────────────────────
 
+_GREETING_KEYWORDS = {
+    "hi", "hello", "hey", "hiya", "howdy", "yo", "sup", "greetings",
+    "good morning", "good afternoon", "good evening", "good day",
+    "what can you do", "what do you do", "help", "who are you",
+    "হ্যালো", "হাই", "নমস্কার", "আসসালামু আলাইকুম", "সালাম",
+}
+
+
+def _is_greeting(text: str) -> bool:
+    """Returns True if the message is a simple greeting or capability question."""
+    normalized = text.strip().lower().rstrip("!?.,")
+    return normalized in _GREETING_KEYWORDS
+
+
 def classify_intent(state: AgentState) -> AgentState:
     """
-    Sends the latest user message to the LLM to classify intent and extract parameters.
-    Determines whether the agent should search, get details, book, or escalate.
+    Classifies the intent of the latest user message.
+    First checks for greetings via keyword matching (no LLM call needed),
+    then sends to the LLM for search / details / book / escalate classification.
     Updates: intent, search_params, selected_listing_id, booking_params.
-    Next: run_tool (if actionable intent) or escalate (if unhandled).
+    Next: run_tool (if actionable intent), greeting, or escalate.
     """
     messages = state["messages"]
     latest_message = messages[-1]["content"] if messages else ""
+
+    # ── Fast path: detect greetings without LLM ───────────────────────────────
+    if _is_greeting(latest_message):
+        return {
+            **state,
+            "intent": "greeting",
+            "search_params": None,
+            "selected_listing_id": None,
+            "booking_params": None,
+        }
 
     classification_prompt = f"""Analyze this user message and respond ONLY with a JSON object.
 
@@ -78,6 +103,7 @@ Rules:
 - intent = "search" if the guest wants to find available properties
 - intent = "details" if asking about a specific property
 - intent = "book" if confirming a booking
+- intent = "greeting" if the guest is just saying hello, hi, hey, or asking what you can do
 - intent = "escalate" for anything else
 - Fill only the fields relevant to the intent, null for others"""
 
@@ -194,6 +220,33 @@ Guidelines:
     return {**state, "messages": updated_messages}
 
 
+def handle_greeting(state: AgentState) -> AgentState:
+    """
+    Responds to a simple greeting or capability question with a friendly welcome message.
+    Guides the guest toward the three supported actions: search, details, or booking.
+    Updates: messages (appends the welcome reply).
+    Next: END.
+    """
+    greeting_message = {
+        "role": "assistant",
+        "content": (
+            "Hello! Welcome to StayEase 👋\n\n"
+            "I'm your AI booking assistant. Here's what I can help you with:\n"
+            "🔍 **Search** — Find available properties by location, dates, and number of guests\n"
+            "🏠 **Details** — Get full information about a specific property\n"
+            "📅 **Book** — Create a confirmed booking for your stay\n\n"
+            "To get started, just tell me where you'd like to stay and your travel dates! "
+            "For example: *'I need a room in Cox's Bazar for 2 nights for 2 guests.'*"
+        ),
+        "timestamp": datetime.utcnow().isoformat(),
+    }
+
+    return {
+        **state,
+        "messages": state["messages"] + [greeting_message],
+    }
+
+
 def escalate(state: AgentState) -> AgentState:
     """
     Generates a polite escalation message when the agent cannot handle the guest's request.
@@ -223,12 +276,14 @@ def escalate(state: AgentState) -> AgentState:
 
 # ─── Routing ──────────────────────────────────────────────────────────────────
 
-def route_by_intent(state: AgentState) -> Literal["run_tool", "escalate"]:
+def route_by_intent(state: AgentState) -> Literal["run_tool", "greeting", "escalate"]:
     """
     Conditional edge function: routes to run_tool for actionable intents,
-    or to escalate for anything the agent cannot handle.
+    to greeting for hello/hi messages, or to escalate for anything unhandled.
     """
     intent = state.get("intent")
     if intent in ("search", "details", "book"):
         return "run_tool"
+    if intent == "greeting":
+        return "greeting"
     return "escalate"

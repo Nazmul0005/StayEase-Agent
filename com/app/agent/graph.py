@@ -6,6 +6,7 @@ from com.app.agent.nodes import (
     run_tool,
     generate_response,
     escalate,
+    handle_greeting,
     route_by_intent,
 )
 
@@ -26,6 +27,7 @@ def build_graph() -> StateGraph:
     graph.add_node("run_tool", run_tool)
     graph.add_node("generate_response", generate_response)
     graph.add_node("escalate", escalate)
+    graph.add_node("greeting", handle_greeting)
 
     # ── Entry point ───────────────────────────────────────────────────────────
     graph.set_entry_point("classify_intent")
@@ -36,6 +38,7 @@ def build_graph() -> StateGraph:
         route_by_intent,
         {
             "run_tool": "run_tool",
+            "greeting": "greeting",
             "escalate": "escalate",
         },
     )
@@ -44,6 +47,7 @@ def build_graph() -> StateGraph:
     graph.add_edge("run_tool", "generate_response")
     graph.add_edge("generate_response", END)
     graph.add_edge("escalate", END)
+    graph.add_edge("greeting", END)
 
     return graph.compile()
 
