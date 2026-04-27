@@ -1,7 +1,7 @@
 from pydantic import BaseModel, Field
 from typing import Optional
 from uuid import UUID
-from datetime import datetime
+from datetime import datetime, date
 
 
 class ListingResponse(BaseModel):
@@ -27,8 +27,8 @@ class BookingResponse(BaseModel):
     listing_id: UUID
     guest_name: str
     guest_phone: Optional[str]
-    check_in: str
-    check_out: str
+    check_in: date
+    check_out: date
     guests: int
     total_price: float = Field(..., description="Total price in BDT")
     status: str
