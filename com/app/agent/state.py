@@ -16,7 +16,7 @@ class AgentState(TypedDict):
 
     intent: Optional[str]
     # Classified intent of the latest user message.
-    # One of: "search" | "details" | "book" | "escalate" | None.
+    # One of: "search" | "details" | "book" | "greeting" | "escalate" | None.
     # Set by classify_intent node; drives conditional routing.
 
     search_params: Optional[dict]
